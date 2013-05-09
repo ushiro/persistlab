@@ -1,0 +1,464 @@
+#!/usr/bin/env python
+"""
+    persistlab.batlab
+    ~~~~~~~~~~~~~
+
+    This implements the core of persistlab features.
+
+    :copyright: (c) 2013 Stephane Henry.
+    :license: BSD, see LICENSE for more details.
+"""
+
+from __future__ import print_function
+
+import StringIO
+import glob
+import sys
+import os
+import shutil
+import argparse
+from collections import OrderedDict
+
+from pkg_resources import iter_entry_points
+import matplotlib.pyplot as plt
+import pandas
+import numpy as np
+import configobj
+
+import persist
+import figitem
+import measfile
+import publishrst
+from VERSION import __version__
+from fileutils import find_non_existing_dir as fned
+
+# FIGURE ITEMS #
+FIGURE_ITEMS = OrderedDict()
+FIGURE_ITEMS ['ax.xlabel'] = 'X very long label'
+FIGURE_ITEMS ['ax.ylabel'] = 'Y label'
+FIGURE_ITEMS ['ax.grid']=0
+
+class Settings:
+
+    def __init__(self):
+        """The default values must give a type compatible with persist.py
+        e.g. no empty list, so type casting works"""
+
+        # Configuration file
+        self.config_write = 0
+        self.config_load = 0
+        self.config_filename='settings.ini'        
+        # Data files
+        self.data_files=[]
+        self.data_format='flat'
+        self.data_channels=[-1]  
+        # Data processing
+        self.data_process=''
+        self.data_process_fn='stats.csv'
+        # Plotting
+        self.figure_write=0
+        self.figure_plot = 0
+        self.figure_mode='a'
+        self.figure_manager='default'
+        self.figure_show=0
+        self.figure_formats = ['eps', 'jpg', 'svg']
+        self.figure_legend = 1 # args_parser says show by default
+        self.figure_use_color = 0
+        self.figure_use_markers = 0
+        self.figure_use_dashes = 0
+        self.figure_use_line_style = 0
+        # General output
+        self.output_dir='output'
+        self.output_overwrite=0
+        # Report
+        self.publish = 0
+        self.publish_float_format='%.2e'
+        self.publish_formats=['html']
+        self.publish_base_name = 'report'
+        # Verbose
+        self.verbose=0
+    
+    def print_items(self):
+        for k in sorted(self.__dict__.keys()):
+            print ('{} = {}'.format(k, self.__dict__[k]))
+
+
+class Plotter:
+    
+    def __init__(self):
+        # Figure managers
+        self.figmanagers = {'default':figitem.FigureManager}
+        self.modes = ['a', 'o', 's']
+    
+    def write_figures(self, lifm, verbose=0, **kwargs):
+##        [self.write_fig(fm, **kwargs) for fm in lifm]
+        [fm.write_fig(fm, **kwargs) for fm in lifm]
+        if verbose:
+            message = """saved image(s) "{0}" to output directory "{2}" 
+            using extension(s) {1}"""
+            str_figs_bn = ' '.join([fm.bn for fm in lifm])
+            im_types = kwargs['image_types']
+            od = kwargs['output_dir']
+            print (message.format(str_figs_bn, im_types, od))
+    
+    #Interaction
+    def _off_key(self, event):
+        if event.key == 'i':
+            # Update settings from figure
+            self.plab.write_settings()
+        if event.key == 'd':
+            #Update figure from settings
+            self.plab.load_settings()
+    
+    # TO FIX : Add interaction: savefig, reload params,...
+    def make_fm(self, figure_manager='default', **kwargs):
+        # Make figure manager
+        fm = self.figmanagers[figure_manager](figure_items = self.plab.figure_items)
+        # keep a reference to figure_manager for connections
+        self.lifm.append(fm) 
+        
+        # Add some interaction
+        fm.figure.canvas.mpl_connect('key_release_event', self._off_key)
+        fm.on_key_actions['i'] = fm.getp
+        fm.off_key_actions['d'] = fm.setp
+        fm.help.appendix += '"i" and "d" action interact with the settings file'
+        
+        # Return the figure manager
+        return fm
+        
+    def legend_label(self, i, legend_format = 'ch. {}'):
+        return legend_format.format(i)
+    
+    def visualise_o(self, limf, **kwargs):
+        """one file per figure"""
+        lifm = []
+        for mf in limf:
+            fm = self.make_fm(bn_fig='fig_' + mf.bn, **kwargs)
+            lifm.append(fm)
+            for i, s in enumerate(mf):
+                ll = self.legend_label(s.name)
+                fm.plot_series(series=s, i=i, legend_label=ll, **kwargs)
+            fm.adorn(**kwargs)
+        return lifm
+    
+    def _legend_label_a(self, mf, series):
+        return '{}, ch.{}'.format(mf.bn, series.name)
+    
+    def visualise_a(self, limf, **kwargs):
+        """all files in one figure"""
+        _cp = os.path.commonprefix([mf.bn for mf in limf]).strip('_')
+        fm = self.make_fm(bn_fig='fig_' + _cp, **kwargs)
+        i = 0
+        for mf in limf:
+            for series in mf:
+                ll = self._legend_label_a(mf=mf, series=series)
+                fm.plot_series(fm=fm, series=series, i=i, legend_label=ll, 
+                               **kwargs)
+                i += 1
+        fm.adorn(**kwargs)
+        return [fm]
+    
+    def visualise_s(self, limf, **kwargs):
+        """all files in one figure, concatenating the channels"""
+        # Shift
+        lastindexes = [mf.dfs().index[-1] for mf in limf]
+        cumsums = [sum(lastindexes[:i]) for i in range(len(lastindexes))]
+        lidf = [mf.df.shift(delay, freq=1) for mf, delay in zip(limf, cumsums)]
+        # Concatenate
+        df = pandas.concat(lidf)
+        # Visualise
+        cp = os.path.commonprefix([mf.bn for mf in limf])
+        fm = self.make_fm(bn_fig='fig_' + cp, **kwargs)
+               
+        for i, s in df.iteritems():
+            ll = self.legend_label(i)
+            fm.plot_series(series=s, i=i, legend_label=ll, **kwargs)
+##        fm.ax.grid(0) 
+        fm.adorn(**kwargs)
+    
+    def visualise(self, plab,  limf, figure_mode='a', **kwargs):
+        self.lifm = []
+        self.plab = plab
+        return getattr(self, 'visualise_' + figure_mode)(limf, **kwargs)
+
+    
+    
+class PersistLab:
+    
+    def __init__(self, 
+                    Settings = Settings, 
+                    Plotter=Plotter, 
+                    grpf='persistlab_figure', 
+                    DataProcessor=measfile.DataProcessor,
+                    grpc='persistlab_dataprocessor', 
+                    DataFileParser=measfile.DataFileParser, 
+                    grpp='persistlab_parser', 
+                    Publisher=publishrst.Publisher, 
+                    **kwargs):
+        # Settings
+        self.plugins_versions = {}
+        self.pars = Settings()
+        # Publisher
+        self.publisher = Publisher()
+        # File parser
+        self.dataparser = DataFileParser()
+        self.load_plugins(container=self.dataparser.fileformats,group = grpp)
+        # Data processor
+        self.dataproc = DataProcessor()
+        self.load_plugins(container=self.dataproc.calculators, group=grpc)
+        # Plotter
+        self.plotter = Plotter()
+        self.load_plugins(container=self.plotter.figmanagers, group=grpf)
+    
+    def load_plugins(self, container={}, group=''):
+        for ep in iter_entry_points(group=group):
+            # Load plugins
+            container[ep.name] = ep.load()
+            # Store plugins version number
+            self.plugins_versions[ep.dist.project_name] = ep.dist.version
+    
+    # Settings
+    def write_settings(self):
+        
+        # Working directory
+        self.sm.config['working directory'] = os.getcwd()        
+        
+        # Section 'figure items'
+        self.sm.config['figure items'] = {}
+        self.sm.config['figure items'].update(self.figure_items)
+        
+        # Section 'Parameters'
+        self.sm.update_section(self.pars)
+        
+        # Section 'versions'
+        section_version = 'versions'
+        self.sm.config[section_version] = {}
+        pyversion = '.'.join(str(e) for e in sys.version_info[:3])
+        self.sm.config[section_version]['python']  = pyversion
+        self.sm.config[section_version]['matplotlib']  = plt.matplotlib.__version__
+        self.sm.config[section_version]['pandas']  = pandas.__version__
+        self.sm.config[section_version]['configobj']  = configobj.__version__
+        self.sm.config[section_version]['persistlab']  = __version__
+        self.sm.config[section_version].update(self.plugins_versions)
+        
+        # Write to file
+        self.sm.write()
+    
+    def load_settings(self):
+        self.sm.load()
+        
+        # This subsequently raises RuntimeError: maximum recursion depth exceeded while 
+        # calling a Python object
+        # when calling self.pars or self.sm.config(one of them)
+        0 and vars(self.pars).update(self.sm.config.items())
+        0 and vars(self.pars).update(self.sm.config)
+        
+        self.figure_items.update(self.sm.config['figure items'])
+    
+    # Plot
+    def data_plot(self, limf):
+        lifm = self.plotter.visualise(plab=self, limf=limf, **vars(self.pars))
+        if self.pars.figure_write:
+            self.plotter.write_figures(lifm, **vars(self.pars))
+            libn = [fm.bn for fm in lifm]
+            self.publisher.add_figures(libn, **vars(self.pars))
+        self.pars.figure_show and plt.show()
+    
+    # Process
+    def data_process(self, limf):
+        stats_df = self.dataproc.compute(limf=limf, **self.pars.__dict__)
+        self.publisher.add_dataframe(stats_df, **self.pars.__dict__)
+    
+    def arrange_settings(self, **kwargs):
+        # Update the settings
+        vars(self.pars).update(**kwargs)
+        self.figure_items = FIGURE_ITEMS
+        # Init settings manager
+        self.sm = persist.SettingsManager(**vars(self.pars))
+        
+        # Load the settings from ini file
+##        if self.pars.settings_load_from_file:
+        if self.pars.settings_load:
+            self.load_settings()
+        
+        # change datafiles names as relative paths
+        lifn =  [os.path.relpath(fn) for fn in self.pars.data_files]
+        self.pars.data_files = lifn
+        
+        # Output directory
+        if not self.pars.output_overwrite:
+            self.pars.output_dir = fned(self.pars.output_dir)
+        if self.pars.publish or self.pars.figure_write :
+            d = self.pars.output_dir
+            not os.path.isdir(d) and os.mkdir(d)
+    
+    def process(self, **kwargs):
+        self.arrange_settings(**kwargs)        
+        limf = self.dataparser.parsefiles(**vars(self.pars))
+        self.pars.data_process and self.data_process(limf)
+        self.pars.figure_plot and self.data_plot(limf)
+        self.pars.publish and self.publisher.publish(**vars(self.pars))
+        self.pars.settings_write and self.write_settings()
+
+    # Command line interface
+    def parse_cla(self, clargs):
+        self.args_parser().parse_args(args=clargs, namespace=self.pars)
+        if self.pars.settings_load:
+            self.load_settings()
+            vars(self.pars).update(self.sm.config)
+    
+    def args_parser(self):
+        # Initialise the argument parser
+        _str_descr = """Batch data processing with persistence of the settings ."""
+        parser = argparse.ArgumentParser(description = _str_descr, 
+                        version=__version__, 
+                        conflict_handler='resolve', 
+                        # Is this noe the default one?
+                        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        
+        #  POSITIONAL ARGUMENTS : datafiles  #
+        parser.add_argument('data_files',
+                        nargs='*', 
+                        default = self.pars.data_files, 
+                        type = os.path.relpath, 
+                        metavar='FILE',
+                        help="data file(s) to be processed.")
+        
+        #  OPTIONAL ARGUMENTS #
+        # General #
+        parser.add_argument('-v','--verbose',  
+                        default=self.pars.verbose, 
+                        action='count', 
+                        help='verbose.')
+        
+        parser.add_argument('-l', '--config-load', 
+                        action='store_true', 
+                        help='Load settings from file')
+        
+        parser.add_argument('-cf', '--config-file', 
+                        default=self.pars.settings_filename, 
+                        metavar='FILE', 
+                        help="file to load settings from.")
+        # Data files #
+        parser.add_argument('-f', '--data-format',  
+                        choices=self.dataparser.fileformats.keys(),
+                        default=self.pars.data_format, 
+                        help='data file format.')
+        
+        parser.add_argument('-n', '--data-channels', 
+                        nargs= '*',
+                        default=self.pars.data_channels, 
+                        type=int, 
+                        metavar = 'CHAN', 
+                        help='channel(s) to plot, "-1" plots all.')
+        
+        parser.add_argument('-p', '--data-process',  
+                        choices=self.dataproc.calculators.keys(), 
+                        default=self.pars.data_process, 
+                        help='data processing type.')
+        
+        # Visualisation #
+        parser.add_argument('-s', '--figure-show', 
+                        action='store_true', 
+                        help='show the matplotlib interface.')
+        
+        parser.add_argument('-m', '--figure-mode', 
+                        choices=self.plotter.modes,
+                        default=self.pars.figure_mode, 
+##                        help=plotting_mode_help
+                        )
+        
+        parser.add_argument('-ft', '--figure-type',
+                        choices=self.plotter.figmanagers.keys(), 
+                        default = self.pars.figure_type, 
+                        help='figure type.', 
+                        )
+        
+        parser.add_argument('-fl', '--figure-legend',
+                        action='store_false', 
+                        help='show legend on figures.')
+    
+        parser.add_argument('-ff', '--figure-formats', 
+                        default=self.pars.figure_formats,
+                        nargs='*', 
+                        metavar='FORMAT', 
+                        help = 'image file formats.')
+        
+        # Figure lines styles #
+        parser.add_argument('-a', '--figure-use-dashes', 
+                        action='store_true', 
+                        help='use dashes for the lines.')
+        parser.add_argument('-l','--figure-use-line-style', 
+                        action='store_true', 
+                        help="""use matplotlib default line styles 
+                        ("-","--", "-.",  and ":")""")
+        parser.add_argument('-c','--figure-use-color', 
+                            action='store_true', 
+                            help='use color for lines.')
+        parser.add_argument('-k','--figure-use-markers', 
+                        action='store_true', 
+                        help='use markers for lines.')
+                            #  Change this to "-l" and '--line-style' for line style?
+                        # e.g. "-l  cm" would mean use color and markers.
+                        # => issue with dashes and mpl default line style, 
+                        # that are not possible together...
+                        # => issue with 'choices' from args_parse 
+                        # that are set to accept only one value... would need something
+                        # that accepts a combination of sevral choices
+                        #
+                        # The action ''append_const''  or 'append' might be useful here to
+                        # add lines styles to a container specified by 'dest'
+        # Outputs #
+        parser.add_argument('-d', '--output-dir', 
+                        nargs=1,
+                        metavar='DIR', 
+                        default = self.pars.output_dir, 
+                        help='output directory')
+        parser.add_argument('-o', '--output-overwrite', 
+                        action='store_true', 
+                        help='overwrite the output directory.')
+        
+        parser.add_argument('-pb', '--publish', 
+                            action='store_true', 
+                            help='publish output document')
+        
+        parser.add_argument('-pf', '--publish-formats',
+                        nargs='*', 
+                        choices=self.publisher.formats, 
+                        default=self.pars.publish_formats, 
+                        help='output document formats.', 
+                        )
+        parser.add_argument('-w', '--figure-write',
+                        action='store_true', 
+                        help='write figure(s) to image files.')
+    
+        return parser
+        
+        parser.add_argument('-r', '--segment-range', 
+                        nargs=2,
+    ##                    type=int, 
+                        metavar = 'RANGE', 
+                        default=-1, 
+                        help="""range of the segments to plot, all by default;
+                        only valid for multiple segment data file.""")
+
+def persistlab(**kwargs):
+    prl = PersistLab()
+    prl.process(**kwargs)
+    return prl
+    
+def clean_output(str_dir='output*'):
+    """use 'pyclean' to delete pyc files """
+    for g in glob.glob(str_dir):
+        os.path.isdir(g) and shutil.rmtree(g) 
+        os.path.isfile(g) and os.remove(g)
+    
+#
+
+
+
+
+
+
+
+

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE Project SYSTEM "Project-4.6.dtd">
+<!-- eric4 project file for project persistlab -->
+<!-- Saved: 2013-05-09, 01:48:08 -->
+<!-- Copyright (C) 2013 ,  -->
+<Project version="4.6">
+  <Language>en</Language>
+  <ProgLanguage mixed="0">Python</ProgLanguage>
+  <ProjectType>Qt4</ProjectType>
+  <Description></Description>
+  <Version>0.1</Version>
+  <Author></Author>
+  <Email></Email>
+  <Sources>
+    <Source>setup.py</Source>
+    <Source>persistlab/measfile.py</Source>
+    <Source>persistlab/publishrst.py</Source>
+    <Source>persistlab/__init__.py</Source>
+    <Source>persistlab/testsuite/__init__.py</Source>
+    <Source>persistlab/testsuite/test_measfile.py</Source>
+    <Source>persistlab/figitem.py</Source>
+    <Source>persistlab/testsuite/test_figitem.py</Source>
+    <Source>persistlab/fileutils.py</Source>
+    <Source>persistlab/batlab.py</Source>
+    <Source>persistlab/persist.py</Source>
+    <Source>persistlab/testsuite/test_persist.py</Source>
+    <Source>persistlab/testsuite/test_batlab.py</Source>
+    <Source>persistlab/batlab_plugins.py</Source>
+    <Source>persistlab/testsuite/caller.py</Source>
+    <Source>persistlab/gitversion.py</Source>
+    <Source>PersistLabPlugins/setup.py</Source>
+    <Source>PersistLabPlugins/persistlabplugins/test_techniques.py</Source>
+    <Source>PersistLabPlugins/persistlabplugins/techniques.py</Source>
+    <Source>PersistLabPlugins/persistlabplugins/__init__.py</Source>
+    <Source>testfew.py</Source>
+    <Source>install.sh</Source>
+    <Source>PersistLabPlugins/plabplugins_testfew.py</Source>
+    <Source>bin/persistlab</Source>
+    <Source>bin/persistlab_testall</Source>
+    <Source>PersistLabPlugins/persistlabplugins_testall</Source>
+  </Sources>
+  <Forms>
+  </Forms>
+  <Translations>
+  </Translations>
+  <Resources>
+  </Resources>
+  <Interfaces>
+  </Interfaces>
+  <Others>
+    <Other>persistlab/data</Other>
+    <Other>PersistLabPlugins/persistlabplugins/data</Other>
+    <Other>LICENSE.txt</Other>
+    <Other>README.txt</Other>
+    <Other>PersistLabPlugins/persistlabplugins/data/cv.txt</Other>
+    <Other>PersistLabPlugins/persistlabplugins/data/transient.txt</Other>
+  </Others>
+  <Vcs>
+    <VcsType>None</VcsType>
+  </Vcs>
+  <FiletypeAssociations>
+    <FiletypeAssociation pattern="*.ui" type="FORMS" />
+    <FiletypeAssociation pattern="*.idl" type="INTERFACES" />
+    <FiletypeAssociation pattern="*.qm" type="TRANSLATIONS" />
+    <FiletypeAssociation pattern="*.ptl" type="SOURCES" />
+    <FiletypeAssociation pattern="*.pyw" type="SOURCES" />
+    <FiletypeAssociation pattern="*.ui.h" type="FORMS" />
+    <FiletypeAssociation pattern="*.ts" type="TRANSLATIONS" />
+    <FiletypeAssociation pattern="*.py" type="SOURCES" />
+    <FiletypeAssociation pattern="*.qrc" type="RESOURCES" />
+  </FiletypeAssociations>
+</Project>

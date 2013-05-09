@@ -1,0 +1,8 @@
+testfile
+
+Time/sec, Current/A, Current/A,other
+
+1.000e-1, 8, 17, 18, 27 
+2.000e-1, 5, 14, 15, 23  
+3.000e-1, 6, 16, 06, 22 
+

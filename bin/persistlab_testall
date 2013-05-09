@@ -1,0 +1,21 @@
+#!/usr/bin/env python
+"""
+    plb_testall.py
+    ~~~~~~~~~~~~~~~
+
+    Script to runs all tests from persistlab.
+
+    :copyright: (c) 2013 by Stephane Henry.
+    :license: BSD, see LICENSE for more details.
+
+"""
+import os
+import unittest
+
+from persistlab.testsuite import caller
+
+def test_all():
+    caller.test_package()
+
+if __name__ == "__main__":
+    test_all()

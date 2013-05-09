@@ -1,0 +1,16 @@
+#!/usr/bin/env python
+
+import os
+import unittest
+
+import persistlabplugins
+
+def main():
+    m = os.path.dirname(persistlabplugins.__file__)
+    testsuite = unittest.TestLoader.discover(unittest.defaultTestLoader, m)
+    unittest.TextTestRunner(verbosity=2).run(testsuite)
+    print 'ran all discovered tests in {}'.format(m)
+
+
+if __name__ == "__main__":
+    main()
