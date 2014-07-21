@@ -25,7 +25,7 @@ Usage
 
 From the command line::
     
-    $ persistlab -help
+    $ persistlab --help
 
 From the python interpreter, allowing for direct customisation::
 
