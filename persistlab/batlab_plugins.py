@@ -20,7 +20,6 @@ class PersistLabPlugins(batlab.PersistLab):
     
     def load_plugins(self, container={}, group=''):
         for ep in iter_entry_points(group=group):
-            # Load plugins
             try:
                 container[ep.name] = ep.load()
             except:

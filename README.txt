@@ -136,6 +136,10 @@ Develop install
     
     $ python setup.py develop
 
+And to remove the development installation
+::
+
+    $ python setup.py develop --uninstall
     
 
 ACKNOWLEDGMENT
